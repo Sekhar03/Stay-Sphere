@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { getServerSession } from "@/lib/auth/jwt";
 import { z } from "zod";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 const createVisitSchema = z.object({
   propertyId: z.string().min(1, "Property ID is required"),
@@ -16,6 +17,9 @@ const createVisitSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimited = await enforceRateLimit(req, "properties:visits", 12, 60);
+    if (rateLimited) return rateLimited;
+
     const body = await req.json();
     const parsed = createVisitSchema.safeParse(body);
 

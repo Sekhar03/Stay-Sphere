@@ -3,9 +3,13 @@ import prisma from "@/lib/db/prisma";
 import { registerSchema } from "@/lib/validators";
 import { hashPassword } from "@/lib/auth/jwt";
 import { Role, PropertyVerificationStatus } from "@/lib/constants";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimited = await enforceRateLimit(req, "auth:register", 10, 60);
+    if (rateLimited) return rateLimited;
+
     const body = await req.json();
     const validatedData = registerSchema.parse(body);
 

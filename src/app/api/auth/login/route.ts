@@ -3,9 +3,13 @@ import prisma from "@/lib/db/prisma";
 import { loginSchema } from "@/lib/validators";
 import { comparePassword, signToken, TOKEN_COOKIE_NAME } from "@/lib/auth/jwt";
 import { Role } from "@/lib/constants";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimited = await enforceRateLimit(req, "auth:login", 15, 60);
+    if (rateLimited) return rateLimited;
+
     const body = await req.json();
     const validatedData = loginSchema.parse(body);
     const identifier = validatedData.email.trim();

@@ -4,9 +4,13 @@ import { requireAuth } from "@/lib/auth/rbac";
 import { createPaymentOrderSchema } from "@/lib/validators";
 import { createUpiOrder } from "@/lib/payments/upi-gateway";
 import { PaymentStatus, PaymentType } from "@/lib/constants";
+import { enforceRateLimit } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimited = await enforceRateLimit(req, "payments:create-order", 20, 60);
+    if (rateLimited) return rateLimited;
+
     const auth = await requireAuth();
     if ("errorResponse" in auth) return auth.errorResponse;
 
@@ -40,6 +44,36 @@ export async function POST(req: NextRequest) {
       });
       if (invoice) {
         verifiedAmount = Number(invoice.totalAmount);
+      }
+    }
+
+    // Reuse an unexpired PENDING order (< 10 min old) for the same booking/invoice to avoid duplicate orders
+    if (data.bookingId || data.invoiceId) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const existingPending = await prisma.payment.findFirst({
+        where: {
+          bookingId: data.bookingId || undefined,
+          invoiceId: data.invoiceId || undefined,
+          paymentType: data.paymentType as PaymentType,
+          status: PaymentStatus.PENDING,
+          amount: verifiedAmount,
+          createdAt: { gte: tenMinutesAgo },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingPending?.razorpayOrderId) {
+        return NextResponse.json({
+          orderId: existingPending.razorpayOrderId,
+          clientOrderId: existingPending.receiptNumber,
+          paymentUrl: `${process.env.UPI_GATEWAY_URL || "http://localhost:8000"}/pay/${existingPending.razorpayOrderId}`,
+          upiIntent: null,
+          amount: Number(existingPending.amount),
+          currency: "INR",
+          receiptNumber: existingPending.receiptNumber,
+          paymentId: existingPending.id,
+          reused: true,
+        });
       }
     }
 

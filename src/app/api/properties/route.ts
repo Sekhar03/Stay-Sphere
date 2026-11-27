@@ -9,6 +9,7 @@ import {
   GenderPreference,
   FoodOption,
 } from "@/lib/constants";
+import { getCached, setCached, invalidateCachePrefix } from "@/lib/cache/redisCache";
 
 // ─── Shared include for property listings ────────────────────────────────────
 // Only fetches the first media item (cover) + a capped set of amenities to cut
@@ -166,6 +167,24 @@ export async function GET(req: NextRequest) {
     else if (sortBy === "priceDesc") orderBy.startingRent = "desc";
     else orderBy.createdAt = "desc";
 
+    const isPublic = !where.ownerId;
+    const cacheKey = isPublic
+      ? `properties:list:${req.nextUrl.searchParams.toString() || "default"}`
+      : null;
+
+    if (cacheKey) {
+      const cachedPayload = await getCached<{
+        properties: any[];
+        pagination: { total: number; page: number; limit: number; totalPages: number };
+      }>(cacheKey);
+      if (cachedPayload) {
+        const cachedRes = NextResponse.json(cachedPayload);
+        cachedRes.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=30");
+        cachedRes.headers.set("X-Cache", "HIT");
+        return cachedRes;
+      }
+    }
+
     // ── Single parallel query: count + rows ──────────────────────────────────
     const [total, properties] = await Promise.all([
       prisma.pGProperty.count({ where }),
@@ -197,15 +216,21 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const res = NextResponse.json({
+    const payload = {
       properties: formattedProperties,
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    });
+    };
+
+    if (cacheKey) {
+      await setCached(cacheKey, payload, 60);
+    }
+
+    const res = NextResponse.json(payload);
 
     // ── HTTP caching: public listings are cacheable for 60 s, stale-while-revalidate 30 s ──
-    const isPublic = !where.ownerId;
     if (isPublic) {
       res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=30");
+      res.headers.set("X-Cache", "MISS");
     }
 
     return res;

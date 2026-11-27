@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/auth/rbac";
 import { Role, PropertyVerificationStatus } from "@/lib/constants";
+import { invalidateCachePrefix } from "@/lib/cache/redisCache";
 
 export async function POST(
   req: NextRequest,
@@ -42,6 +43,8 @@ export async function POST(
         rejectionReason: action === "REJECT" ? String(rejectionReason).trim() : null,
       },
     });
+
+    await invalidateCachePrefix("properties:list:");
 
     await prisma.auditLog.create({
       data: {

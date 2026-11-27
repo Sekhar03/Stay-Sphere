@@ -26,10 +26,16 @@ import {
   Wind,
   X,
   ChevronRight,
+  Heart,
+  Scale,
+  LayoutGrid,
+  Map as MapIcon,
+  Loader2,
 } from "lucide-react";
 import ScheduleVisitModal from "@/components/booking/ScheduleVisitModal";
 import SafeImage from "@/components/ui/SafeImage";
 import CustomSelect from "@/components/ui/CustomSelect";
+import PGMap from "@/components/maps/PGMap";
 
 function titleCase(str?: string) {
   if (!str) return "";
@@ -47,6 +53,9 @@ interface PGPropertySummary {
   slug: string;
   city: string;
   locality: string;
+  addressLine1?: string;
+  latitude?: number;
+  longitude?: number;
   genderCategory: "MALE" | "FEMALE" | "UNISEX" | "BOYS" | "GIRLS" | "COED";
   propertyType?: string;
   foodIncluded: boolean;
@@ -82,6 +91,9 @@ function mapProperty(p: any): PGPropertySummary {
     slug: p.slug,
     city: p.address?.city || p.city || "Bangalore",
     locality: p.address?.locality || p.locality || "",
+    addressLine1: p.address?.addressLine1 || "",
+    latitude: typeof p.address?.latitude === "number" ? p.address.latitude : undefined,
+    longitude: typeof p.address?.longitude === "number" ? p.address.longitude : undefined,
     genderCategory: p.genderPreference || p.genderCategory || "UNISEX",
     propertyType: p.propertyType || "PG",
     foodIncluded: p.foodOption ? p.foodOption !== "NONE" : Boolean(p.foodIncluded),
@@ -137,6 +149,46 @@ export default function HomePage() {
   const [sortBy, setSortBy] = useState("createdAt");
   const [hasTourOnly, setHasTourOnly] = useState(false);
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Shortlist & Compare state (persisted in localStorage)
+  const [shortlistIds, setShortlistIds] = useState<string[]>([]);
+  const [shortlistOnly, setShortlistOnly] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+
+  // View mode: Grid vs Split List + Map
+  const [viewMode, setViewMode] = useState<"grid" | "split">("grid");
+  const [focusedMapProperty, setFocusedMapProperty] = useState<PGPropertySummary | null>(null);
+
+  // Load shortlist from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("staysphere_shortlist");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setShortlistIds(parsed);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const toggleShortlist = (id: string) => {
+    setShortlistIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try {
+        localStorage.setItem("staysphere_shortlist", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
   // Visit modal state
   const [selectedVisitProperty, setSelectedVisitProperty] = useState<{
     id: string;
@@ -153,7 +205,7 @@ export default function HomePage() {
     return () => clearTimeout(timer);
   }, [localityInput]);
 
-  // Synchronize with URL search parameters (e.g. from navbar dropdown or city selector)
+  // Synchronize with URL search parameters (e.g. from navbar dropdown or shared URL)
   useEffect(() => {
     const syncFromUrl = () => {
       if (typeof window !== "undefined") {
@@ -164,6 +216,18 @@ export default function HomePage() {
         if (c !== null) setCity(c);
         const loc = sp.get("locality");
         if (loc) { setLocalityInput(loc); setLocality(loc); }
+        const g = sp.get("gender");
+        if (g !== null) setGender(g);
+        const mr = sp.get("maxRent");
+        if (mr !== null) setMaxPrice(mr);
+        const sh = sp.get("sharing");
+        if (sh !== null) setSharing(sh);
+        const fd = sp.get("food");
+        if (fd !== null) setFood(fd);
+        const sb = sp.get("sortBy");
+        if (sb !== null) setSortBy(sb);
+        const ht = sp.get("hasTour");
+        if (ht === "true") setHasTourOnly(true);
       }
     };
 
@@ -176,17 +240,31 @@ export default function HomePage() {
     };
   }, []);
 
-  // ── In-memory SWR cache: key → list of cards ─────────────────────────────
-  // Persists for the full session so filter toggling is instant on repeat visits.
-  const cacheRef = React.useRef<Map<string, PGPropertySummary[]>>(new Map());
-  const abortControllerRef = React.useRef<AbortController | null>(null);
-
+  // Push active filter state to URL query string (shareable / bookmarkable)
   useEffect(() => {
-    fetchProperties();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams();
+    if (city) sp.set("city", city);
+    if (locality) sp.set("locality", locality);
+    if (propertyType) sp.set("propertyType", propertyType);
+    if (gender) sp.set("gender", gender);
+    if (maxPrice) sp.set("maxRent", maxPrice);
+    if (sharing) sp.set("sharing", sharing);
+    if (food) sp.set("food", food);
+    if (sortBy && sortBy !== "createdAt") sp.set("sortBy", sortBy);
+    if (hasTourOnly) sp.set("hasTour", "true");
+    const qs = sp.toString();
+    const nextUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", nextUrl);
   }, [city, locality, propertyType, gender, maxPrice, sharing, food, sortBy, hasTourOnly]);
 
-  const fetchProperties = async () => {
+  // ── In-memory SWR cache: key → list + pagination ─────────────────────────
+  const cacheRef = React.useRef<
+    Map<string, { items: PGPropertySummary[]; total: number; totalPages: number }>
+  >(new Map());
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  const buildFilterParams = (targetPage = 1) => {
     const params = new URLSearchParams();
     if (city) params.append("city", city);
     if (locality) params.append("locality", locality);
@@ -197,20 +275,34 @@ export default function HomePage() {
     if (food) params.append("food", food);
     if (sortBy) params.append("sortBy", sortBy);
     if (hasTourOnly) params.append("hasTour", "true");
+    if (targetPage > 1) params.append("page", String(targetPage));
+    return params;
+  };
 
+  useEffect(() => {
+    setPage(1);
+    fetchProperties(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [city, locality, propertyType, gender, maxPrice, sharing, food, sortBy, hasTourOnly]);
+
+  const fetchProperties = async (targetPage = 1) => {
+    const params = buildFilterParams(targetPage);
     const cacheKey = params.toString() || "default";
 
-    // ── Stale-While-Revalidate: show cached data instantly, re-fetch silently ──
-    const cached = cacheRef.current.get(cacheKey);
-    if (cached) {
-      setProperties(cached);
-      setLoading(false);
-      // Still re-fetch in background to pick up any new listings
+    if (targetPage === 1) {
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached) {
+        setProperties(cached.items);
+        setTotalResults(cached.total);
+        setTotalPages(cached.totalPages);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
     } else {
-      setLoading(true);
+      setLoadingMore(true);
     }
 
-    // Cancel any in-flight request for a previous filter set
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -218,14 +310,29 @@ export default function HomePage() {
     try {
       const res = await fetch(`/api/properties?${params.toString()}`, {
         signal: controller.signal,
-        // Reuse browser HTTP cache (60 s) so identical filter combos skip the network
         next: { revalidate: 60 },
       } as RequestInit);
       if (res.ok) {
         const data = await res.json();
         const mapped = (data.properties || []).map(mapProperty);
-        cacheRef.current.set(cacheKey, mapped);
-        setProperties(mapped);
+        const total = data.pagination?.total ?? mapped.length;
+        const tPages = data.pagination?.totalPages ?? 1;
+
+        if (targetPage === 1) {
+          cacheRef.current.set(cacheKey, { items: mapped, total, totalPages: tPages });
+          setProperties(mapped);
+          if (mapped.length > 0 && !focusedMapProperty) {
+            setFocusedMapProperty(mapped[0]);
+          }
+        } else {
+          setProperties((prev) => {
+            const seen = new Set(prev.map((item) => item.id));
+            return [...prev, ...mapped.filter((item: PGPropertySummary) => !seen.has(item.id))];
+          });
+        }
+        setTotalResults(total);
+        setTotalPages(tPages);
+        setPage(targetPage);
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
@@ -234,7 +341,14 @@ export default function HomePage() {
     } finally {
       if (!abortControllerRef.current?.signal.aborted) {
         setLoading(false);
+        setLoadingMore(false);
       }
+    }
+  };
+
+  const handleLoadMore = () => {
+    if (!loadingMore && page < totalPages) {
+      fetchProperties(page + 1);
     }
   };
 
@@ -249,6 +363,7 @@ export default function HomePage() {
     setFood("");
     setSortBy("createdAt");
     setHasTourOnly(false);
+    setShortlistOnly(false);
   };
 
   return (
@@ -452,19 +567,79 @@ export default function HomePage() {
 
       {/* Property listings */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        {/* Results header: title + view controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
               Available properties {city ? `in ${city}` : "across all locations"}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Verified by field inspectors &amp; approved by administrators
+              {loading ? "Loading…" : totalResults > 0 ? `${properties.length} of ${totalResults} verified listings` : "Verified by field inspectors & approved by administrators"}
             </p>
           </div>
-          <span className="text-xs text-slate-600 font-medium self-start sm:self-auto border border-slate-200 bg-white px-2.5 py-1 rounded-md">
-            {properties.length} results
-          </span>
+
+          {/* View controls */}
+          <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+            {/* Shortlist filter toggle */}
+            {shortlistIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShortlistOnly((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                  shortlistOnly
+                    ? "bg-rose-50 border-rose-300 text-rose-700"
+                    : "bg-white border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-600"
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${shortlistOnly ? "fill-rose-500 text-rose-500" : ""}`} />
+                Shortlisted ({shortlistIds.length})
+              </button>
+            )}
+
+            {/* View mode: Grid / Map+List */}
+            <div className="flex items-center bg-white border border-slate-200 rounded-full p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                  viewMode === "grid"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" /> Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("split")}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                  viewMode === "split"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" /> Map
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Compare bar — appears when 2–3 PGs are shortlisted */}
+        {shortlistIds.length >= 2 && (
+          <div className="mb-4 flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5">
+            <div className="flex items-center gap-2 text-xs text-blue-800 font-medium">
+              <Scale className="w-4 h-4 text-blue-600 shrink-0" />
+              {shortlistIds.length} PGs shortlisted — ready to compare side-by-side
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCompareModal(true)}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-full transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Compare now
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -507,32 +682,43 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-        ) : properties.length === 0 ? (
+        ) : properties.length === 0 || (shortlistOnly && shortlistIds.length === 0) ? (
           <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
             <Compass className="w-8 h-8 text-slate-400 mx-auto mb-2" />
             <h3 className="text-sm font-semibold text-slate-800">
-              No matching properties
+              {shortlistOnly ? "No shortlisted properties" : "No matching properties"}
             </h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-              Try adjusting your city, locality, sharing type, or price filter to view more listings.
+              {shortlistOnly
+                ? "Heart a property card to add it to your shortlist."
+                : "Try adjusting your city, locality, sharing type, or price filter to view more listings."}
             </p>
             <button
-              onClick={handleResetFilters}
+              onClick={shortlistOnly ? () => setShortlistOnly(false) : handleResetFilters}
               className="mt-4 px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 cursor-pointer"
             >
-              Reset filters
+              {shortlistOnly ? "Show all results" : "Reset filters"}
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {properties.map((pg, index) => (
-              <div
-                key={pg.id}
-                className="apple-card overflow-hidden flex flex-col"
-                style={{
-                  animation: `staggerIn 260ms var(--ease-out) ${Math.min(index * 35, 300)}ms both`,
-                }}
-              >
+          <>
+            {/* Split: scrollable list (left) + sticky map (right) */}
+            <div className={viewMode === "split" ? "flex gap-4" : ""}>
+              {/* Grid / List column */}
+              <div className={viewMode === "split" ? "flex-1 overflow-y-auto max-h-[80vh] pr-1" : ""}>
+                <div className={viewMode === "split"
+                  ? "flex flex-col gap-4"
+                  : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                }>
+                  {(shortlistOnly ? properties.filter((p) => shortlistIds.includes(p.id)) : properties).map((pg, index) => (
+                    <div
+                      key={pg.id}
+                      className={`apple-card overflow-hidden flex flex-col${viewMode === "split" ? " cursor-pointer" : ""}`}
+                      style={{
+                        animation: `staggerIn 260ms var(--ease-out) ${Math.min(index * 35, 300)}ms both`,
+                      }}
+                      onClick={viewMode === "split" ? () => setFocusedMapProperty(pg) : undefined}
+                    >
                 {/* Photo & Badges */}
                 <div className="relative h-52 w-full bg-slate-100 overflow-hidden">
                   <SafeImage
@@ -572,8 +758,20 @@ export default function HomePage() {
                     </span>
                   </div>
 
+                  {/* Heart / Shortlist button */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleShortlist(pg.id); }}
+                    className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 hover:bg-white flex items-center justify-center shadow-sm border border-black/[0.08] transition-colors cursor-pointer"
+                    title={shortlistIds.includes(pg.id) ? "Remove from shortlist" : "Add to shortlist"}
+                  >
+                    <Heart
+                      className={`w-4 h-4 transition-colors ${shortlistIds.includes(pg.id) ? "fill-rose-500 text-rose-500" : "text-slate-400"}`}
+                    />
+                  </button>
+
                   {pg.hasVirtualTour && (
-                    <div className="absolute top-3 right-3 bg-white/95 text-slate-900 text-[11px] font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-black/[0.08] shadow-xs">
+                    <div className="absolute bottom-10 right-2.5 bg-white/95 text-slate-900 text-[11px] font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-black/[0.08] shadow-xs">
                       <Compass className="w-3.5 h-3.5 text-blue-600" />
                       360° tour
                     </div>
@@ -745,6 +943,137 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
+                </div>
+              </div>
+
+              {/* Sticky Map panel (split mode only) */}
+              {viewMode === "split" && (
+                <div className="hidden lg:block w-[42%] sticky top-4 self-start h-[80vh] rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                  {focusedMapProperty && focusedMapProperty.latitude && focusedMapProperty.longitude ? (
+                    <PGMap
+                      latitude={focusedMapProperty.latitude}
+                      longitude={focusedMapProperty.longitude}
+                      name={focusedMapProperty.name}
+                      address={focusedMapProperty.addressLine1 || focusedMapProperty.locality}
+                      city={focusedMapProperty.city}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 gap-3">
+                      <MapIcon className="w-10 h-10 text-slate-300" />
+                      <p className="text-xs text-slate-400 text-center max-w-[160px]">
+                        Click a property card to view it on the map
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Load More button */}
+            {page < totalPages && (
+              <div className="mt-8 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-400 text-slate-700 text-sm font-medium rounded-full transition-colors shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                      Loading more…
+                    </>
+                  ) : (
+                    <>
+                      Load more properties
+                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Compare Modal */}
+        {showCompareModal && shortlistIds.length >= 2 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl max-w-5xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 max-h-[85vh] overflow-y-auto space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 border border-blue-200 text-blue-700 flex items-center justify-center">
+                    <Scale className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Compare PGs</h3>
+                    <p className="text-[11px] text-slate-500">Side-by-side comparison of your shortlisted properties</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCompareModal(false)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Compare table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr>
+                      <th className="text-left text-slate-500 font-semibold py-2 pr-4 w-28 min-w-[7rem]">Feature</th>
+                      {properties.filter((p) => shortlistIds.includes(p.id)).slice(0, 3).map((p) => (
+                        <th key={p.id} className="text-left text-slate-900 font-semibold py-2 px-3 border-l border-slate-100">
+                          <span className="block truncate max-w-[180px]">{p.name}</span>
+                          <span className="font-normal text-slate-400 text-[11px]">{p.locality}, {p.city}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[
+                      { label: "Starting Rent", key: (p: PGPropertySummary) => `₹${p.startingPrice.toLocaleString("en-IN")}/mo` },
+                      { label: "Security Deposit", key: (p: PGPropertySummary) => `₹${p.securityDeposit.toLocaleString("en-IN")}` },
+                      { label: "Notice Period", key: (p: PGPropertySummary) => `${p.noticePeriodDays} days` },
+                      { label: "Gender", key: (p: PGPropertySummary) => titleCase(p.genderCategory) },
+                      { label: "Food", key: (p: PGPropertySummary) => p.foodIncluded ? titleCase(p.foodOption) : "Not included" },
+                      { label: "360° Tour", key: (p: PGPropertySummary) => p.hasVirtualTour ? "✓ Available" : "—" },
+                      { label: "Rating", key: (p: PGPropertySummary) => p.averageRating > 0 ? `${p.averageRating.toFixed(1)} ⭐ (${p.reviewCount})` : "No reviews yet" },
+                      { label: "Amenities", key: (p: PGPropertySummary) => p.amenities.slice(0, 3).map((a) => a.name).join(", ") || "—" },
+                    ].map((row) => (
+                      <tr key={row.label}>
+                        <td className="py-2 pr-4 text-slate-500 font-medium whitespace-nowrap">{row.label}</td>
+                        {properties.filter((p) => shortlistIds.includes(p.id)).slice(0, 3).map((p) => (
+                          <td key={p.id} className="py-2 px-3 text-slate-800 border-l border-slate-100">{row.key(p)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-2 justify-end">
+                {properties.filter((p) => shortlistIds.includes(p.id)).slice(0, 3).map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/properties/${p.id}`}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-full transition-colors inline-flex items-center gap-1.5"
+                  >
+                    Reserve {p.name.split(" ")[0]}
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowCompareModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-full transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>

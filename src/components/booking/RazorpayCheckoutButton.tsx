@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import QRCode from "qrcode";
 import {
   CreditCard,
   CheckCircle,
@@ -62,6 +63,7 @@ export default function UpiCheckoutButton({
   const [utrInput, setUtrInput] = useState("");
   const [timeLeft, setTimeLeft] = useState(900); // 15:00 minutes
   const [desktopAppNotice, setDesktopAppNotice] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   // Platform detection (safe for SSR)
   const [platform, setPlatform] = useState<{
@@ -187,6 +189,56 @@ export default function UpiCheckoutButton({
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, [showModal, orderData, success, verifyStatus, callVerify, onSuccess]);
+
+  // ── Immediate verification when returning from UPI app (mobile / Capacitor) ──
+  useEffect(() => {
+    if (!showModal || !orderData || success) return;
+    if (verifyStatus === "paid" || verifyStatus === "expired" || verifyStatus === "failed") return;
+
+    const verifyOnReturn = async () => {
+      if (!isMountedRef.current) return;
+      const status = await callVerify(orderData.orderId, utrInput);
+      if (!isMountedRef.current) return;
+
+      if (status === "paid") {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        setVerifyStatus("paid");
+        setSuccess(true);
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setShowModal(false);
+          onSuccess?.({ autoVerified: true });
+        }, 1200);
+      } else if (status === "failed" || status === "expired") {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        setVerifyStatus(status);
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        verifyOnReturn();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    let capListener: { remove?: () => void } | null = null;
+    try {
+      const CapApp = (window as any).Capacitor?.Plugins?.App;
+      if (CapApp?.addListener) {
+        capListener = CapApp.addListener("appStateChange", (state: { isActive: boolean }) => {
+          if (state.isActive) verifyOnReturn();
+        });
+      }
+    } catch {
+      // Non-Capacitor environment
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      capListener?.remove?.();
+    };
+  }, [showModal, orderData, success, verifyStatus, utrInput, callVerify, onSuccess]);
 
   // ── Create order ──────────────────────────────────────────────────────────
   const handlePayment = async () => {
@@ -366,9 +418,32 @@ export default function UpiCheckoutButton({
     setDesktopAppNotice(null);
   };
 
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
-    upiIntentUri
-  )}`;
+  // Generate local QR Data URL instantaneously (zero external API dependency)
+  useEffect(() => {
+    if (!showModal || !orderData) return;
+    let active = true;
+    QRCode.toDataURL(upiIntentUri, {
+      width: 240,
+      margin: 1,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((url) => {
+        if (active) setQrDataUrl(url);
+      })
+      .catch(() => {
+        // Fallback if canvas fails
+        if (active) {
+          setQrDataUrl(
+            `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(
+              upiIntentUri
+            )}`
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [showModal, orderData, upiIntentUri]);
 
   // ── Status banner helpers ─────────────────────────────────────────────────
   const StatusBanner = () => {
@@ -594,14 +669,20 @@ export default function UpiCheckoutButton({
 
                   {/* Dynamic QR Code */}
                   <div className="relative mx-auto p-3 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col items-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={qrImageUrl}
-                      alt="UPI Payment QR Code"
-                      width={180}
-                      height={180}
-                      className="w-40 h-40 rounded-lg object-contain"
-                    />
+                    {qrDataUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={qrDataUrl}
+                        alt="UPI Payment QR Code"
+                        width={180}
+                        height={180}
+                        className="w-40 h-40 rounded-lg object-contain"
+                      />
+                    ) : (
+                      <div className="w-40 h-40 rounded-lg bg-slate-100 animate-pulse flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                      </div>
+                    )}
                     <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                       <span>Verified NPCI Dynamic UPI QR</span>
