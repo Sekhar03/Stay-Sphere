@@ -108,14 +108,35 @@ export async function GET(req: NextRequest) {
 
     let totalMonthlyRentCollected = 0;
     let totalPendingRent = 0;
+    const duesAging = {
+      bucket0to7: 0,
+      bucket8to30: 0,
+      bucket30Plus: 0,
+    };
+    const nowMs = Date.now();
 
     rentSchedules.forEach((rs) => {
       if (rs.status === "PAID") {
         totalMonthlyRentCollected += rs.amount;
       } else {
         totalPendingRent += rs.amount;
+        const overdueDays = Math.max(
+          0,
+          Math.floor((nowMs - new Date(rs.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+        );
+        if (overdueDays <= 7) duesAging.bucket0to7 += rs.amount;
+        else if (overdueDays <= 30) duesAging.bucket8to30 += rs.amount;
+        else duesAging.bucket30Plus += rs.amount;
       }
     });
+
+    const totalBilled = totalMonthlyRentCollected + totalPendingRent;
+    const collectionEfficiency = totalBilled > 0
+      ? Math.round((totalMonthlyRentCollected / totalBilled) * 100)
+      : 100;
+    const occupancyRate = totalBeds > 0
+      ? Math.round((occupiedBeds / totalBeds) * 100)
+      : 0;
 
     return NextResponse.json({
       owner: {
@@ -138,6 +159,9 @@ export async function GET(req: NextRequest) {
         totalMonthlyRentCollected,
         totalPendingRent,
         staffCount,
+        occupancyRate,
+        collectionEfficiency,
+        duesAging,
       },
       properties,
       recentBookings: bookings,

@@ -1,14 +1,16 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://10.0.2.2:3000';
+
 const config: CapacitorConfig = {
   appId: 'in.staysphere.app',
   appName: 'StaySphere',
   webDir: 'public',
   server: {
-    // In production set your deployed domain e.g. https://staysphere.in
-    // In development connects to your local machine / network IP
-    url: 'http://10.0.2.2:3000',
-    cleartext: true,
+    // Set NEXT_PUBLIC_APP_URL for release builds (e.g. https://staysphere.in)
+    // Defaults to Android emulator host loopback in local development
+    url: appUrl,
+    cleartext: !appUrl.startsWith('https://'),
   },
 };
 

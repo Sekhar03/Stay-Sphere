@@ -35,12 +35,78 @@ export const rentReminderQueue = redisConnection
   : null;
 
 /**
+ * Idempotently generate monthly RentSchedule invoices for all active tenant
+ * allocations for the current billing month (1st of month -> due on 5th).
+ */
+export async function generateMonthlyRentInvoices(referenceDate = new Date()): Promise<number> {
+  const billingMonth = new Date(
+    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1)
+  );
+  const dueDate = new Date(
+    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 5)
+  );
+
+  const activeAllocations = await prisma.tenantAllocation.findMany({
+    where: { isActive: true },
+    include: {
+      bed: {
+        include: {
+          room: true,
+        },
+      },
+    },
+  });
+
+  let created = 0;
+  for (const alloc of activeAllocations) {
+    const monthlyRent = Number(alloc.bed?.room?.monthlyRent || 0);
+    if (!monthlyRent || monthlyRent <= 0) continue;
+
+    const existing = await prisma.rentSchedule.findUnique({
+      where: {
+        tenantProfileId_billingMonth: {
+          tenantProfileId: alloc.tenantProfileId,
+          billingMonth,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      await prisma.rentSchedule.create({
+        data: {
+          tenantProfileId: alloc.tenantProfileId,
+          billingMonth,
+          dueDate,
+          amount: monthlyRent,
+          lateFee: 0,
+          totalPayable: monthlyRent,
+          status: referenceDate > dueDate ? "DUE" : "UPCOMING",
+        },
+      });
+      created++;
+    }
+  }
+
+  return created;
+}
+
+/**
  * Core business logic that executes the rent reminder check across all active tenants.
  * Can be triggered directly by Cron/API or via BullMQ worker!
  */
 export async function executeRentReminderBatch() {
   console.log("⏰ [Rent Scheduler] Starting automated rent reminder scan...");
   const today = new Date();
+
+  try {
+    const generated = await generateMonthlyRentInvoices(today);
+    if (generated > 0) {
+      console.log(`🧾 [Rent Scheduler] Generated ${generated} monthly rent invoice(s).`);
+    }
+  } catch (err) {
+    console.warn("[Rent Scheduler] Invoice generation warning:", err);
+  }
 
   // Find all UPCOMING or DUE or OVERDUE rent schedules
   const schedules = await prisma.rentSchedule.findMany({

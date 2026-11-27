@@ -65,3 +65,70 @@ jobs:
           DIRECT_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
           JWT_SECRET: "ci_jwt_secret_token_staysphere_32chars"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+
+  e2e:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: staysphere_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
+      REDIS_URL: "redis://localhost:6379"
+      JWT_SECRET: "ci_jwt_secret_token_staysphere_32chars"
+      RAZORPAY_KEY_SECRET: "ci_mock_secret"
+      RAZORPAY_WEBHOOK_SECRET: "ci_webhook_secret"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Push Prisma Schema & Seed Database
+        run: |
+          npx prisma generate
+          npx prisma db push --accept-data-loss
+          npm run prisma:seed
+
+      - name: Build & Start Next.js Server for E2E
+        run: |
+          npm run build
+          nohup npm run start > /tmp/next.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null; then
+              echo "Server is ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run E2E Tests
+        run: npm run test:e2e

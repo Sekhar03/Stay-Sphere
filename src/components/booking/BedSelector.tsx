@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { BedStatus, SharingType } from "@/lib/constants";
-import { BedDouble, CheckCircle2, Lock, Wind, Bath, Sun } from "lucide-react";
+import { BedDouble, CheckCircle2, Clock, Lock, Wind, Bath, Sun } from "lucide-react";
 
 export interface RoomWithBeds {
   id: string;
@@ -27,6 +27,8 @@ interface BedSelectorProps {
   selectedBedId: string | null;
   onSelectRoom: (roomId: string) => void;
   onSelectBed: (bedId: string) => void;
+  /** Optional ISO timestamp when an active bed reservation lock expires */
+  holdExpiresAt?: string | null;
 }
 
 export default function BedSelector({
@@ -35,8 +37,28 @@ export default function BedSelector({
   selectedBedId,
   onSelectRoom,
   onSelectBed,
+  holdExpiresAt,
 }: BedSelectorProps) {
   const activeRoom = rooms.find((r) => r.id === selectedRoomId) || rooms[0];
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
+
+  useEffect(() => {
+    if (!holdExpiresAt) {
+      setRemainingSeconds(0);
+      return;
+    }
+    const update = () => {
+      const diff = Math.max(0, Math.floor((new Date(holdExpiresAt).getTime() - Date.now()) / 1000));
+      setRemainingSeconds(diff);
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [holdExpiresAt]);
+
+  const holdLabel = remainingSeconds > 0
+    ? `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`
+    : null;
 
   return (
     <div className="space-y-6">
@@ -117,8 +139,16 @@ export default function BedSelector({
               </p>
             </div>
             <div className="flex items-center gap-3 text-[11px]">
+              {holdLabel && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-semibold tabular-nums">
+                  <Clock className="w-3 h-3" /> Hold: {holdLabel}
+                </span>
+              )}
               <span className="flex items-center gap-1 text-slate-600">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Available
+              </span>
+              <span className="flex items-center gap-1 text-amber-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> On Hold
               </span>
               <span className="flex items-center gap-1 text-slate-400">
                 <span className="w-2.5 h-2.5 rounded-full bg-slate-300" /> Occupied
@@ -130,6 +160,7 @@ export default function BedSelector({
             {activeRoom.beds.map((bed) => {
               const isSelected = selectedBedId === bed.id;
               const isAvailable = bed.status === BedStatus.AVAILABLE;
+              const isReserved = bed.status === BedStatus.RESERVED;
 
               return (
                 <button
@@ -142,11 +173,13 @@ export default function BedSelector({
                       ? "border-blue-600 bg-blue-600 text-white shadow-sm ring-2 ring-blue-500/20"
                       : isAvailable
                       ? "border-emerald-300 bg-white hover:border-emerald-500 text-slate-800"
+                      : isReserved
+                      ? "border-amber-200 bg-amber-50/70 text-amber-700 cursor-not-allowed opacity-85"
                       : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-75"
                   }`}
                 >
                   <div className="flex items-center justify-center gap-1 mb-1">
-                    <BedDouble className={`w-4 h-4 ${isSelected ? "text-white" : isAvailable ? "text-emerald-600" : "text-slate-400"}`} />
+                    <BedDouble className={`w-4 h-4 ${isSelected ? "text-white" : isAvailable ? "text-emerald-600" : isReserved ? "text-amber-500" : "text-slate-400"}`} />
                     <span className="font-bold text-xs">Bed #{bed.bedNumber}</span>
                   </div>
                   <span
@@ -155,10 +188,12 @@ export default function BedSelector({
                         ? "text-blue-100"
                         : isAvailable
                         ? "text-emerald-700"
+                        : isReserved
+                        ? "text-amber-700"
                         : "text-slate-400"
                     }`}
                   >
-                    {isSelected ? "Selected" : isAvailable ? "Available" : "Occupied"}
+                    {isSelected ? "Selected" : isAvailable ? "Available" : isReserved ? "On Hold (15m)" : "Occupied"}
                   </span>
                 </button>
               );

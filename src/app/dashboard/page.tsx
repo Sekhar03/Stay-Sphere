@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import UpiCheckoutButton from "@/components/booking/RazorpayCheckoutButton";
 import DocumentUploader from "@/components/ui/DocumentUploader";
+import { saveOfflinePass, registerPushNotifications } from "@/lib/mobile/capacitorClient";
 import { toast } from "sonner";
 
 export default function TenantDashboard() {
@@ -53,6 +54,76 @@ export default function TenantDashboard() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Save active confirmed stay to Offline Tenant Pass & register Capacitor push if native
+  useEffect(() => {
+    registerPushNotifications();
+  }, []);
+
+  useEffect(() => {
+    const confirmed = bookings.find((b: any) => b.status === "CONFIRMED");
+    if (confirmed) {
+      saveOfflinePass({
+        bookingReference: confirmed.bookingReference || confirmed.id,
+        propertyName: confirmed.property?.name || "StaySphere PG",
+        propertyAddress: confirmed.property?.address?.locality || "",
+        roomNumber: confirmed.room?.roomNumber,
+        bedNumber: confirmed.bed?.bedNumber,
+        monthlyRent: Number(confirmed.room?.monthlyRent || 0),
+        moveInDate: confirmed.checkInDate,
+      });
+    }
+  }, [bookings]);
+
+  const handleDownloadAgreement = (b: any) => {
+    const win = window.open("", "_blank", "width=820,height=900");
+    if (!win) {
+      toast.error("Please allow pop-ups to view/print your rental agreement.");
+      return;
+    }
+    const rent = Number(b.room?.monthlyRent || 8500).toLocaleString("en-IN");
+    const deposit = Number(b.property?.securityDeposit || 10000).toLocaleString("en-IN");
+    const noticeDays = b.property?.noticePeriodDays || 30;
+    const checkIn = b.checkInDate ? new Date(b.checkInDate).toLocaleDateString("en-IN") : "—";
+    win.document.write(`<!DOCTYPE html>
+<html><head><title>StaySphere Rental Agreement - ${b.bookingReference || b.id}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; padding: 40px; line-height: 1.6; max-width: 760px; margin: auto; }
+  h1 { font-size: 20px; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+  .meta { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .label { color: #64748b; }
+  h2 { font-size: 14px; margin-top: 20px; text-transform: uppercase; letter-spacing: 0.04em; color: #334155; }
+  ul { font-size: 13px; padding-left: 18px; }
+  .sig { display: flex; justify-content: space-between; margin-top: 48px; font-size: 13px; }
+  @media print { button { display: none; } }
+</style></head><body>
+  <button onclick="window.print()" style="float:right;padding:8px 14px;background:#0f172a;color:#fff;border:none;border-radius:6px;cursor:pointer;">Print / Save PDF</button>
+  <h1>STAYSPHERE DIGITAL PG RENTAL AGREEMENT</h1>
+  <div class="meta">
+    <div class="row"><span class="label">Booking Reference:</span><strong>${b.bookingReference || b.id}</strong></div>
+    <div class="row"><span class="label">Tenant Name:</span><strong>${currentUser?.name || "Resident"} (${currentUser?.email || ""})</strong></div>
+    <div class="row"><span class="label">Property:</span><strong>${b.property?.name || "StaySphere Property"}</strong></div>
+    <div class="row"><span class="label">Room / Bed Allocation:</span><strong>Room ${b.room?.roomNumber || "-"} · Bed ${b.bed?.bedNumber || "-"}</strong></div>
+    <div class="row"><span class="label">Move-in Date:</span><strong>${checkIn}</strong></div>
+    <div class="row"><span class="label">Monthly Rent:</span><strong>₹${rent} / month</strong></div>
+    <div class="row"><span class="label">Security Deposit:</span><strong>₹${deposit}</strong></div>
+    <div class="row"><span class="label">Notice Period:</span><strong>${noticeDays} days prior written notice</strong></div>
+  </div>
+  <h2>Standard Terms &amp; House Rules</h2>
+  <ul>
+    <li>Monthly rent is due on or before the 5th of every calendar month via StaySphere UPI/Online Portal.</li>
+    <li>Security deposit is refundable within 7 working days of checkout after settling electricity &amp; room inspection dues.</li>
+    <li>Resident agrees to provide at least ${noticeDays} days notice via the StaySphere Dashboard before vacating.</li>
+    <li>Quiet hours, visitor policies, and property safety guidelines apply throughout the stay.</li>
+  </ul>
+  <div class="sig">
+    <div>________________________<br/>Resident Signature</div>
+    <div>________________________<br/>Authorized Property Manager</div>
+  </div>
+</body></html>`);
+    win.document.close();
+  };
 
   const [activeTab, setActiveTab] = useState<
     | "dashboard"
@@ -954,6 +1025,17 @@ export default function TenantDashboard() {
                                 }}
                               />
                             </div>
+                          )}
+
+                          {b.status === "CONFIRMED" && (
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadAgreement(b)}
+                              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5 text-blue-600" />
+                              Agreement PDF
+                            </button>
                           )}
 
                           {(b.status === "AWAITING_PAYMENT" || b.status === "CONFIRMED") && (

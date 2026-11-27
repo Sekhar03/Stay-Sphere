@@ -887,6 +887,43 @@ export default function OwnerDashboardPage() {
                     </div>
                   </div>
 
+                  {/* Occupancy, Collection Efficiency & Dues Aging */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase">Collection Efficiency</div>
+                      <div className="text-2xl font-black text-emerald-600 mt-1 tabular-nums">
+                        {overview?.stats?.collectionEfficiency ?? 100}%
+                      </div>
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all"
+                          style={{ width: `${overview?.stats?.collectionEfficiency ?? 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase">Dues 0–7 Days</div>
+                      <div className="text-xl font-black text-slate-900 mt-1 tabular-nums">
+                        ₹{(overview?.stats?.duesAging?.bucket0to7 || 0).toLocaleString("en-IN")}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">Current &amp; grace window</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase">Dues 8–30 Days</div>
+                      <div className="text-xl font-black text-amber-600 mt-1 tabular-nums">
+                        ₹{(overview?.stats?.duesAging?.bucket8to30 || 0).toLocaleString("en-IN")}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">Follow-up recommended</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase">Dues 30+ Days</div>
+                      <div className="text-xl font-black text-rose-600 mt-1 tabular-nums">
+                        ₹{(overview?.stats?.duesAging?.bucket30Plus || 0).toLocaleString("en-IN")}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">Urgent escalation</div>
+                    </div>
+                  </div>
+
                   {/* Recent Bookings */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-slate-100 flex items-center justify-between">
