@@ -1,0 +1,447 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Apple Human Interface Design Tokens (Light Mode) */
+    --apple-bg: #f5f5f7;
+    --apple-card: #ffffff;
+    --apple-label: #1d1d1f;
+    --apple-secondary-label: #86868b;
+    --apple-tertiary-label: #a1a1a6;
+    --apple-separator: rgba(0, 0, 0, 0.08);
+    --apple-fill: rgba(0, 0, 0, 0.04);
+    --apple-fill-secondary: rgba(0, 0, 0, 0.06);
+
+    /* Apple System Accent Colors */
+    --apple-blue: #0071e3;
+    --apple-blue-hover: #0077ed;
+    --apple-green: #34c759;
+    --apple-red: #ff3b30;
+    --apple-orange: #ff9500;
+    --apple-purple: #af52de;
+    --apple-indigo: #5856d6;
+
+    /* Emil Kowalski / Apple Motion Easing Curves */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.1);
+
+    /* Tailwind theme bindings */
+    --background: 240 5% 96%;
+    --foreground: 240 6% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 12%;
+    --primary: 211 100% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 12%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 12%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 211 100% 45%;
+    --radius: 1rem;
+  }
+
+  .dark,
+  [data-theme="dark"] {
+    /* Apple Human Interface Design Tokens (Dark Mode) */
+    --apple-bg: #000000;
+    --apple-card: #161618;
+    --apple-label: #f5f5f7;
+    --apple-secondary-label: #86868b;
+    --apple-tertiary-label: #6e6e73;
+    --apple-separator: rgba(255, 255, 255, 0.1);
+    --apple-fill: rgba(255, 255, 255, 0.08);
+    --apple-fill-secondary: rgba(255, 255, 255, 0.12);
+  }
+}
+
+/* ─── Apple Typography, Scrolling & Anti-aliasing ─────────────────── */
+html {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.012em;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
+  touch-action: pan-y;
+  scroll-behavior: smooth;
+}
+
+body {
+  color: #1d1d1f;
+  background-color: #f5f5f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: clip;
+  touch-action: pan-y;
+}
+
+/* ─── Apple Selection ─────────────────────────────────────────────────── */
+::selection {
+  background-color: rgba(0, 113, 227, 0.25);
+  color: #0071e3;
+}
+
+/* ─── Apple Ultra-thin Custom Scrollbars ──────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+/* ─── Apple Micro-interactions: Press Feedback ────────────────────────── */
+.btn-press {
+  transition: transform 160ms var(--ease-out), opacity 160ms var(--ease-out),
+    background-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* ─── Apple Glassmorphism / Frosted Materials (Hardware Optimized) ── */
+.apple-glass {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+@supports (backdrop-filter: blur(10px)) {
+  .apple-glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+.apple-glass-dark {
+  background: rgba(22, 22, 24, 0.94);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+@supports (backdrop-filter: blur(10px)) {
+  .apple-glass-dark {
+    background: rgba(22, 22, 24, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+/* ─── Apple Card Design (Continuous squircle, hairline border, depth) ── */
+.apple-card {
+  background: #ffffff;
+  border-radius: 1.25rem; /* 20px */
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.03), 0 1px 3px -1px rgba(0, 0, 0, 0.02);
+  transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out),
+    border-color 200ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .apple-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.08), 0 4px 10px -3px rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+  }
+}
+
+.apple-card-dark {
+  background: #161618;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  transition: transform 200ms var(--ease-out), border-color 200ms var(--ease-out),
+    background-color 200ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .apple-card-dark:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.16);
+    background-color: #1c1c1f;
+  }
+}
+
+/* ─── Apple Segmented Control ────────────────────────────────────────── */
+.apple-segmented-track {
+  background: rgba(118, 118, 128, 0.12);
+  padding: 3px;
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.apple-segmented-item {
+  border-radius: 9px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 180ms var(--ease-out);
+}
+
+.apple-segmented-item.active {
+  background: #ffffff;
+  color: #1d1d1f;
+  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* ─── Apple Primary Button ────────────────────────────────────────────── */
+.apple-btn-primary {
+  background: #0071e3;
+  color: #ffffff;
+  border-radius: 9999px; /* Apple pill button */
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px -1px rgba(0, 113, 227, 0.35);
+  transition: all 160ms var(--ease-out);
+}
+.apple-btn-primary:hover {
+  background: #0077ed;
+  box-shadow: 0 4px 14px -1px rgba(0, 113, 227, 0.45);
+}
+.apple-btn-primary:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px -1px rgba(0, 113, 227, 0.3);
+}
+
+/* ─── Apple Secondary Button ──────────────────────────────────────────── */
+.apple-btn-secondary {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1d1d1f;
+  border-radius: 9999px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 160ms var(--ease-out);
+}
+.apple-btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.apple-btn-secondary:active {
+  transform: scale(0.97);
+}
+
+/* ─── Apple Subtle Pill Badge ─────────────────────────────────────────── */
+.apple-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* ─── Keyframe Animations (Emil Kowalski Philosophy) ─────────────────── */
+.popover-enter {
+  animation: popoverIn 180ms var(--ease-out) both;
+  transform-origin: var(--radix-popover-content-transform-origin, top left);
+}
+
+@keyframes popoverIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-enter {
+  animation: modalIn 240ms var(--ease-out) both;
+  transform-origin: center;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.overlay-enter {
+  animation: overlayIn 200ms ease both;
+}
+
+@keyframes overlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.stagger-item {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: staggerIn 280ms var(--ease-out) forwards;
+}
+
+@keyframes staggerIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-enter {
+  animation: toastIn 320ms var(--ease-out) both;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-content {
+  animation: tabFadeIn 180ms var(--ease-out) both;
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Apple Focus Ring ────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #0071e3;
+  outline-offset: 2px;
+}
+
+/* ─── Apple Input Fields ──────────────────────────────────────────────── */
+input,
+textarea,
+select {
+  transition: border-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out),
+    background-color 150ms var(--ease-out);
+}
+
+/* ─── Apple Card Interactive ─────────────────────────────────────────── */
+.card-interactive {
+  transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out),
+    border-color 200ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+  }
+}
+.card-interactive:active {
+  transform: scale(0.99);
+}
+
+/* ─── Apple Nav Item ──────────────────────────────────────────────────── */
+.nav-item {
+  transition: background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+.nav-item:active {
+  transform: scale(0.98);
+}
+
+/* ─── Apple Progress Bar ──────────────────────────────────────────────── */
+.progress-fill {
+  transition: width 400ms var(--ease-out);
+}
+
+/* ─── Apple Shimmer Loading ──────────────────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+/* ─── Accessibility: Reduced Motion ───────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item,
+  .modal-enter,
+  .popover-enter,
+  .toast-enter,
+  .tab-content {
+    animation: fadeOnly 200ms ease both;
+  }
+
+  .btn-press:active,
+  .apple-btn-primary:active,
+  .apple-btn-secondary:active,
+  .card-interactive:active,
+  .nav-item:active {
+    transform: none;
+  }
+
+  .apple-card:hover,
+  .apple-card-dark:hover,
+  .card-interactive:hover {
+    transform: none;
+  }
+
+  @keyframes fadeOnly {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}

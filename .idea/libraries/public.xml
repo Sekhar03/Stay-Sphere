@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="public">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/compressed_assets/release/compressReleaseAssets/out/assets/public/cordova.js.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/compressed_assets/release/compressReleaseAssets/out/assets/public/manifest.json.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/compressed_assets/release/compressReleaseAssets/out/assets/public/index.html.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/compressed_assets/release/compressReleaseAssets/out/assets/public/cordova_plugins.js.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

@@ -1,0 +1,699 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note: SQLite does not support enums natively. Using String fields with comments.
+// Role: CUSTOMER_TENANT | PG_OWNER | SUPER_ADMIN
+// GenderPreference: BOYS | GIRLS | COED
+// FoodOption: NONE | BREAKFAST_ONLY | TWO_MEALS | THREE_MEALS
+// SharingType: SINGLE | DOUBLE | TRIPLE | FOUR_PLUS
+// PropertyVerificationStatus: DRAFT | PENDING_VERIFICATION | APPROVED | REJECTED
+// BedStatus: AVAILABLE | RESERVED | OCCUPIED | UNDER_MAINTENANCE
+// BookingStatus: PENDING | AWAITING_PAYMENT | CONFIRMED | REJECTED | CANCELLED | COMPLETED | REFUND_PENDING | REFUNDED
+// PaymentType: BOOKING_ADVANCE | SECURITY_DEPOSIT | MONTHLY_RENT | MAINTENANCE_FEE | PENALTY
+// PaymentMethod: RAZORPAY | UPI_OFFLINE | CASH | BANK_TRANSFER
+// PaymentStatus: PENDING | PROCESSING | SUCCESS | FAILED | REFUNDED
+// RentScheduleStatus: UPCOMING | DUE | OVERDUE | PAID | WAIVED
+// TicketCategory: PLUMBING | ELECTRICAL | WIFI_INTERNET | CLEANING | FOOD_QUALITY | SECURITY | OTHER
+// TicketStatus: OPEN | IN_PROGRESS | RESOLVED | CLOSED
+
+// -------------------------------------------------------------
+// USER & PROFILES
+// -------------------------------------------------------------
+
+model User {
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  phone              String?            @unique
+  passwordHash       String
+  name               String
+  avatarUrl          String?
+  role               String             @default("CUSTOMER_TENANT")
+  emailVerified      DateTime?
+  phoneVerified      DateTime?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  ownerProfile       OwnerProfile?
+  tenantProfile      TenantProfile?
+  staffProfile       StaffProfile?
+  bookings           Booking[]          @relation("TenantBookings")
+  reviews            Review[]
+  complaints         MaintenanceRequest[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  userSessions       UserSession[]
+  propertyVisits     PropertyVisit[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model OwnerProfile {
+  id                  String       @id @default(cuid())
+  userId              String       @unique
+  companyName         String?
+  panNumber           String?
+  gstNumber           String?
+  bankAccountNumber   String?
+  bankIfscCode        String?
+  bankAccountName     String?
+  isKycVerified       Boolean      @default(false)
+  kycDocUrl           String?
+  rejectionReason     String?
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties          PGProperty[]
+  staffMembers        StaffProfile[]
+  staffInvitations    StaffInvitation[]
+  announcements       Announcement[]
+  propertyVisits      PropertyVisit[]
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+}
+
+model TenantProfile {
+  id                  String             @id @default(cuid())
+  userId              String             @unique
+  emergencyContact    String?
+  idProofType         String?
+  idProofNumber       String?
+  idProofDocumentUrl  String?
+  photoUrl            String?
+  tcAcceptedAt        DateTime?
+  tcAcceptedIp        String?
+  tcVersion           String?
+  kycStatus           String             @default("PENDING")
+  isKycVerified       Boolean            @default(false)
+  rejectionReason     String?
+  currentBedId        String?            @unique
+  currentBed          Bed?               @relation("CurrentTenantBed", fields: [currentBedId], references: [id])
+  allocations         TenantAllocation[]
+  rentSchedules       RentSchedule[]
+  invoices            Invoice[]
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+// -------------------------------------------------------------
+// PG PROPERTY & MEDIA
+// -------------------------------------------------------------
+
+model PGProperty {
+  id                  String    @id @default(cuid())
+  ownerId             String
+  slug                String    @unique
+  name                String
+  description         String
+  propertyType        String    @default("PG") // PG | RENTED_ROOM | FLAT | HOSTEL
+  genderPreference    String    // BOYS | GIRLS | COED
+  foodOption          String    @default("NONE")
+  menuItems           String    @default("{}") // JSON: { breakfast: string[], lunch: string[], dinner: string[], snacks: string[] }
+  noticePeriodDays    Int       @default(30)
+  gateClosingTime     String?
+  rules               String    @default("[]") // JSON-encoded string array
+  startingRent        Float
+  securityDeposit     Float
+  maintenanceCharges  Float     @default(0)
+  electricityCharges  String?
+  isPublished         Boolean   @default(false)
+  verificationStatus  String    @default("PENDING_VERIFICATION")
+  rejectionReason     String?
+
+  owner               OwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  address             PropertyAddress?
+  rooms               Room[]
+  media               PropertyMedia[]
+  mediaItems          Media[]
+  virtualTours        VirtualTour[]
+  propertyAmenities   PropertyAmenity[]
+  bookings            Booking[]
+  reviews             Review[]
+  maintenanceRequests MaintenanceRequest[]
+  assignedStaff       StaffProfile[]
+  announcements       Announcement[]
+  propertyVisits      PropertyVisit[]
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([ownerId])
+  @@index([isPublished, verificationStatus])
+  @@index([genderPreference])
+}
+
+model PropertyAddress {
+  id           String     @id @default(cuid())
+  propertyId   String     @unique
+  addressLine1 String
+  addressLine2 String?
+  landmark     String?
+  locality     String
+  area         String?
+  city         String
+  state        String
+  pincode      String
+  latitude     Float
+  longitude    Float
+  googlePlaceId String?
+
+  property     PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([city, locality])
+  @@index([pincode])
+}
+
+model PropertyMedia {
+  id         String     @id @default(cuid())
+  propertyId String
+  url        String
+  caption    String?
+  mediaType  String     @default("IMAGE")
+  isCover    Boolean    @default(false)
+  sortOrder  Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  property   PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+model Media {
+  id             String      @id @default(cuid())
+  ownerUserId    String
+  propertyId     String?
+  roomId         String?
+  ticketId       String?
+  stayId         String?
+  purpose        String      // PROPERTY_PHOTO | PANORAMA | TICKET | KYC | PROFILE
+  visibility     String      @default("PUBLIC") // PUBLIC | PRIVATE
+  status         String      @default("PENDING") // PENDING | PROCESSING | READY | FAILED | DELETED
+  sha256         String?
+  storageKey     String
+  url            String?
+  variants       String?     // JSON: { thumb: { key, url, width, height, bytes }, medium: {...}, large: {...}, preview?: {...} }
+  blurData       String?     // data:image/webp;base64,...
+  width          Int?
+  height         Int?
+  bytes          Int?
+  sortOrder      Int         @default(0)
+  isCover        Boolean     @default(false)
+  failureReason  String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+
+  property       PGProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, sortOrder])
+  @@index([sha256])
+  @@index([status, createdAt])
+  @@index([ownerUserId])
+}
+
+model VirtualTour {
+  id           String     @id @default(cuid())
+  propertyId   String
+  roomId       String?
+  title        String
+  assetType    String     // PANORAMA_360 or GLTF_3D
+  assetUrl     String
+  hotspotsJson String?    // JSON string
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  property     PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room         Room?      @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+}
+
+model Amenity {
+  id                String            @id @default(cuid())
+  name              String            @unique
+  code              String            @unique
+  iconName          String
+  category          String            @default("GENERAL")
+  propertyAmenities PropertyAmenity[]
+}
+
+model PropertyAmenity {
+  id         String     @id @default(cuid())
+  propertyId String
+  amenityId  String
+
+  property   PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity    Amenity    @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, amenityId])
+}
+
+// -------------------------------------------------------------
+// ROOMS & BEDS INVENTORY
+// -------------------------------------------------------------
+
+model Room {
+  id              String        @id @default(cuid())
+  propertyId      String
+  roomNumber      String
+  floorNumber     Int           @default(0)
+  sharingType     String        // SINGLE | DOUBLE | TRIPLE | FOUR_PLUS
+  monthlyRent     Float
+  securityDeposit Float
+  hasAttachedBath Boolean       @default(false)
+  hasBalcony      Boolean       @default(false)
+  hasAirCondition Boolean       @default(false)
+  isActive        Boolean       @default(true)
+
+  property        PGProperty    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  beds            Bed[]
+  virtualTours    VirtualTour[]
+  bookings        Booking[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([propertyId, roomNumber])
+  @@index([propertyId, sharingType])
+}
+
+model Bed {
+  id               String            @id @default(cuid())
+  roomId           String
+  bedNumber        String
+  status           String            @default("AVAILABLE")
+
+  room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+  currentTenant    TenantProfile?    @relation("CurrentTenantBed")
+  allocations      TenantAllocation[]
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([roomId, bedNumber])
+  @@index([roomId, status])
+}
+
+// -------------------------------------------------------------
+// BOOKING & ALLOCATION WORKFLOW
+// -------------------------------------------------------------
+
+model Booking {
+  id                  String    @id @default(cuid())
+  bookingReference    String    @unique
+  propertyId          String
+  roomId              String
+  bedId               String?
+  tenantUserId        String
+  checkInDate         DateTime
+  lockExpiresAt       DateTime?
+  monthlyRent         Float
+  bookingAmount       Float
+  securityDeposit     Float
+  totalPayableNow     Float
+  status              String    @default("AWAITING_PAYMENT")
+  cancellationReason  String?
+
+  property            PGProperty @relation(fields: [propertyId], references: [id])
+  room                Room       @relation(fields: [roomId], references: [id])
+  bed                 Bed?       @relation(fields: [bedId], references: [id], onDelete: SetNull)
+  tenantUser          User       @relation("TenantBookings", fields: [tenantUserId], references: [id])
+  statusHistory       BookingStatusHistory[]
+  payments            Payment[]
+  allocations         TenantAllocation[]
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([propertyId])
+  @@index([tenantUserId])
+  @@index([status])
+}
+
+model BookingStatusHistory {
+  id         String   @id @default(cuid())
+  bookingId  String
+  fromStatus String
+  toStatus   String
+  changedBy  String?
+  remarks    String?
+  createdAt  DateTime @default(now())
+
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+model TenantAllocation {
+  id              String        @id @default(cuid())
+  tenantProfileId String
+  bedId           String
+  bookingId       String?
+  checkInDate     DateTime
+  checkOutDate    DateTime?
+  rentDueDay      Int           @default(5)
+  monthlyRent     Float
+  isActive        Boolean       @default(true)
+
+  tenantProfile   TenantProfile @relation(fields: [tenantProfileId], references: [id])
+  bed             Bed           @relation(fields: [bedId], references: [id])
+  booking         Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([tenantProfileId, isActive])
+  @@index([bedId])
+}
+
+// -------------------------------------------------------------
+// RENT BILLING, INVOICES & PAYMENTS
+// -------------------------------------------------------------
+
+model RentSchedule {
+  id              String    @id @default(cuid())
+  tenantProfileId String
+  billingMonth    DateTime
+  dueDate         DateTime
+  amount          Float
+  lateFee         Float     @default(0)
+  totalPayable    Float
+  status          String    @default("UPCOMING")
+  paidAt          DateTime?
+
+  tenantProfile   TenantProfile @relation(fields: [tenantProfileId], references: [id], onDelete: Cascade)
+  invoices        Invoice[]
+  emailLogs       EmailLog[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantProfileId, billingMonth])
+  @@index([status, dueDate])
+}
+
+model Invoice {
+  id             String    @id @default(cuid())
+  invoiceNumber  String    @unique
+  tenantProfileId String
+  rentScheduleId String?
+  amount         Float
+  taxAmount      Float     @default(0)
+  totalAmount    Float
+  isPaid         Boolean   @default(false)
+  pdfUrl         String?
+
+  tenantProfile  TenantProfile @relation(fields: [tenantProfileId], references: [id])
+  rentSchedule   RentSchedule? @relation(fields: [rentScheduleId], references: [id], onDelete: SetNull)
+  payments       Payment[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantProfileId])
+  @@index([invoiceNumber])
+}
+
+model Payment {
+  id                 String    @id @default(cuid())
+  bookingId          String?
+  invoiceId          String?
+  paymentType        String    // BOOKING_ADVANCE | SECURITY_DEPOSIT | MONTHLY_RENT | MAINTENANCE_FEE | PENALTY
+  paymentMethod      String    @default("UPI_GATEWAY")
+  amount             Float
+  currency           String    @default("INR")
+  razorpayOrderId    String?   @unique // repurposed: stores UPI gateway order reference
+  razorpayPaymentId  String?   @unique // repurposed: stores UPI transaction ID
+  razorpaySignature  String?           // repurposed: stores gateway verification token
+  status             String    @default("PENDING")
+  failureReason      String?
+  receiptNumber      String    @unique
+
+  booking            Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  invoice            Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  refunds            Refund[]
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status])
+  @@index([razorpayOrderId])
+  @@index([bookingId])
+  @@index([invoiceId])
+}
+
+model Refund {
+  id               String    @id @default(cuid())
+  paymentId        String
+  razorpayRefundId String?   @unique // repurposed: stores UPI gateway refund reference
+  amount           Float
+  status           String    @default("PENDING")
+  reason           String?
+  processedAt      DateTime?
+
+  payment          Payment   @relation(fields: [paymentId], references: [id])
+  createdAt        DateTime  @default(now())
+
+  @@index([paymentId])
+}
+
+model PaymentWebhookEvent {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  eventType  String
+  payload    String   // JSON-encoded string (SQLite has no native JSON type)
+  isHandled  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([eventId])
+}
+
+// -------------------------------------------------------------
+// REVIEWS, MAINTENANCE & COMMUNICATION
+// -------------------------------------------------------------
+
+model Review {
+  id         String     @id @default(cuid())
+  propertyId String
+  userId     String
+  rating     Int
+  comment    String
+  photos     String     @default("[]") // JSON-encoded string array
+  isApproved Boolean    @default(true)
+  ownerReply String?
+
+  property   PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([propertyId, rating])
+}
+
+model MaintenanceRequest {
+  id          String     @id @default(cuid())
+  ticketId    String     @unique
+  propertyId  String
+  userId      String
+  category    String     // PLUMBING | ELECTRICAL | WIFI_INTERNET | CLEANING | FOOD_QUALITY | SECURITY | OTHER
+  title       String
+  description String
+  photos      String     @default("[]") // JSON-encoded string array
+  status      String     @default("OPEN")
+  resolvedAt  DateTime?
+  resolutionNote String?
+
+  property    PGProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([propertyId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model EmailLog {
+  id             String        @id @default(cuid())
+  recipientEmail String
+  template       String
+  subject        String
+  rentScheduleId String?
+  status         String
+  errorDetails   String?
+  sentAt         DateTime      @default(now())
+
+  rentSchedule   RentSchedule? @relation(fields: [rentScheduleId], references: [id], onDelete: SetNull)
+
+  @@index([recipientEmail])
+  @@index([rentScheduleId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   String?  // JSON-encoded string
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model PlatformSettings {
+  id                  String   @id @default("global")
+  platformFeePercent  Float    @default(0)
+  gstPercentage       Float    @default(0)
+  supportEmail        String   @default("support@staysphere.in")
+  supportPhone        String   @default("+91 9876543210")
+  enableEmailAlerts   Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+}
+
+// -------------------------------------------------------------
+// STAFF & ANNOUNCEMENTS
+// -------------------------------------------------------------
+
+model StaffProfile {
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  ownerId        String
+  propertyId     String?
+  staffRole      String        @default("PROPERTY_MANAGER") // PROPERTY_MANAGER | RECEPTIONIST | ACCOUNTANT | MAINTENANCE_STAFF | CUSTOM
+  permissions    String        @default("[]") // JSON string array of granted permissions
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  owner          OwnerProfile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  property       PGProperty?   @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+  @@index([propertyId])
+}
+
+model StaffInvitation {
+  id          String        @id @default(cuid())
+  ownerId     String
+  email       String
+  name        String
+  phone       String?
+  staffRole   String        @default("PROPERTY_MANAGER")
+  propertyId  String?
+  permissions String        @default("[]")
+  token       String        @unique
+  status      String        @default("PENDING") // PENDING | ACCEPTED | EXPIRED
+  expiresAt   DateTime
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  owner       OwnerProfile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([email])
+}
+
+model Announcement {
+  id         String        @id @default(cuid())
+  propertyId String?
+  ownerId    String
+  title      String
+  content    String
+  priority   String        @default("NORMAL") // NORMAL | URGENT
+  targetRole String        @default("ALL") // ALL | TENANTS | STAFF
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  owner      OwnerProfile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  property   PGProperty?   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([propertyId])
+}
+
+model PropertyVisit {
+  id           String      @id @default(cuid())
+  propertyId   String
+  userId       String?
+  name         String
+  phone        String
+  email        String?
+  visitDate    DateTime
+  timeSlot     String      // "MORNING" | "AFTERNOON" | "EVENING"
+  sharingInterest String?  // "SINGLE" | "DOUBLE" | "TRIPLE"
+  notes        String?
+  status       String      @default("SCHEDULED") // "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  property     PGProperty   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ownerProfile OwnerProfile? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId      String?
+
+  @@index([propertyId])
+  @@index([userId])
+  @@index([ownerId])
+  @@index([visitDate])
+}
+
+// -------------------------------------------------------------
+// RELIABLE ASYNC MESSAGING: OUTBOX PATTERN
+// -------------------------------------------------------------
+
+model OutboxMessage {
+  id           String    @id @default(cuid())
+  type         String    // EMAIL_BOOKING_CONFIRMATION | EMAIL_RENT_REMINDER | NOTIFICATION_BROADCAST
+  payload      String    // JSON string
+  status       String    @default("PENDING") // PENDING | DISPATCHED | FAILED
+  retryCount   Int       @default(0)
+  errorMessage String?
+  dispatchedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+

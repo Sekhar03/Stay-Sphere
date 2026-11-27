@@ -1,0 +1,14 @@
+<component name="libraryTable">
+  <library name="out">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_2.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_3.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_5.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_4.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/android/app/build/intermediates/project_dex_archive/release/dexBuilderRelease/out/b5443303135c42c331113c706956d4ef8bd71db45c5aad4ce62916c216e044e3_0.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
