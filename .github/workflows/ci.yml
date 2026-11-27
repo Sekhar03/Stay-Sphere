@@ -47,11 +47,13 @@ jobs:
         run: npx prisma generate
         env:
           DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
 
-      - name: Run Unit & Integration Tests
+      - name: Run Unit Tests
         run: npm run test
         env:
           DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
           JWT_SECRET: "ci_jwt_secret_token_staysphere_32chars"
           RAZORPAY_KEY_SECRET: "ci_mock_secret"
           RAZORPAY_WEBHOOK_SECRET: "ci_webhook_secret"
@@ -60,5 +62,6 @@ jobs:
         run: npm run build
         env:
           DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
+          DIRECT_URL: "postgresql://postgres:postgrespassword@localhost:5432/staysphere_test?schema=public"
           JWT_SECRET: "ci_jwt_secret_token_staysphere_32chars"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"

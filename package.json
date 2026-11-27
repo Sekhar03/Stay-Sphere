@@ -12,6 +12,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "worker": "tsx src/jobs/rentReminderWorker.ts",
     "test": "vitest run",
+    "test:e2e": "vitest run tests/unit/admin-e2e.test.ts tests/unit/business-flows-e2e.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
