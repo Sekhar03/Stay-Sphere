@@ -202,5 +202,3 @@ To run the entire platform (Next.js App + PostgreSQL + Redis) using Docker Compo
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 The application will be live at `http://localhost:3000`.
-#   S t a y - S p h e r e  
- 
