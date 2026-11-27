@@ -77,8 +77,21 @@ public class MainActivity extends BridgeActivity {
                 Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intent);
-                    return true;
+                    if (intent.resolveActivity(getPackageManager()) != null) {
+                        startActivity(intent);
+                        return true;
+                    }
+                    // Fallback to generic UPI chooser if the specific app package is not installed
+                    Uri parsed = Uri.parse(url);
+                    String query = parsed.getEncodedQuery();
+                    if (query != null && !query.isEmpty()) {
+                        Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse("upi://pay?" + query));
+                        fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        Intent chooser = Intent.createChooser(fallback, "Pay with UPI App");
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(chooser);
+                        return true;
+                    }
                 }
             } else {
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));

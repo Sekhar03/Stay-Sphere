@@ -61,6 +61,29 @@ export default function UpiCheckoutButton({
   const [copiedVpa, setCopiedVpa] = useState(false);
   const [utrInput, setUtrInput] = useState("");
   const [timeLeft, setTimeLeft] = useState(900); // 15:00 minutes
+  const [desktopAppNotice, setDesktopAppNotice] = useState<string | null>(null);
+
+  // Platform detection (safe for SSR)
+  const [platform, setPlatform] = useState<{
+    isMobile: boolean;
+    isAndroid: boolean;
+    isIOS: boolean;
+    isNative: boolean;
+  }>({ isMobile: false, isAndroid: false, isIOS: false, isNative: false });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ua = navigator.userAgent || "";
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isNative = Boolean((window as any).Capacitor?.isNativePlatform?.());
+    setPlatform({
+      isMobile: isAndroid || isIOS || isNative,
+      isAndroid,
+      isIOS,
+      isNative,
+    });
+  }, []);
 
   // Verification status state machine
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>("idle");
@@ -194,29 +217,42 @@ export default function UpiCheckoutButton({
       setTimeLeft(900);
       setVerifyStatus("idle");
       setVerifyMessage("");
+      setDesktopAppNotice(null);
       setUtrInput("");
       setSuccess(false);
       setShowModal(true);
 
       // On mobile browsers or Capacitor Android/iOS app, automatically launch available UPI payment app
       if (typeof window !== "undefined") {
+        const ua = navigator.userAgent || "";
+        const isAndroid = /Android/i.test(ua);
         const isMobileOrNative =
-          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+          isAndroid ||
+          /iPhone|iPad|iPod/i.test(ua) ||
           Boolean((window as any).Capacitor?.isNativePlatform?.());
+
         if (isMobileOrNative) {
+          const cleanRef = String(data.orderId || "ORDREF").replace(/[^a-zA-Z0-9_-]/g, "");
           const query = `pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(
             merchantName
           )}&am=${Number(data.amount || amount).toFixed(2)}&cu=INR&tr=${encodeURIComponent(
-            data.orderId || "ORD-REF"
+            cleanRef
           )}&tn=${encodeURIComponent(`StaySphere ${paymentType.replace(/_/g, " ")}`)}`;
           const launchUri = data.upiIntent || `upi://pay?${query}`;
-          setTimeout(() => {
+          try {
+            const link = document.createElement("a");
+            link.href = launchUri;
+            link.style.display = "none";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } catch {
             try {
               window.location.href = launchUri;
             } catch {
-              // Modal remains open with QR + manual launch buttons as fallback
+              // Modal remains open with one-tap GPay / PhonePe / Paytm buttons
             }
-          }, 250);
+          }
         }
       }
     } catch (err: any) {
@@ -266,14 +302,69 @@ export default function UpiCheckoutButton({
   };
 
   // ── Build UPI intent & QR ─────────────────────────────────────────────────
-  const orderRefId = orderData?.orderId || "ORD-REF";
-  const upiIntentUri =
-    orderData?.upiIntent ||
-    `upi://pay?pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(
-      merchantName
-    )}&am=${amount.toFixed(2)}&cu=INR&tr=${encodeURIComponent(orderRefId)}&tn=${encodeURIComponent(
-      `StaySphere ${paymentType.replace(/_/g, " ")}`
-    )}`;
+  const orderRefId = (orderData?.orderId || "ORDREF").replace(/[^a-zA-Z0-9_-]/g, "");
+  const upiQuery = `pa=${encodeURIComponent(merchantVpa)}&pn=${encodeURIComponent(
+    merchantName
+  )}&am=${amount.toFixed(2)}&cu=INR&tr=${encodeURIComponent(orderRefId)}&tn=${encodeURIComponent(
+    `StaySphere ${paymentType.replace(/_/g, " ")}`
+  )}`;
+  const upiIntentUri = orderData?.upiIntent || `upi://pay?${upiQuery}`;
+
+  // Platform-specific deep links:
+  // Android Chrome & WebView support `intent://pay?...#Intent;scheme=upi;package=...;end;`
+  // iOS Safari supports custom app schemes (`tez://`, `phonepe://`, `paytmmp://`, `bhim://`)
+  const queryPart = upiIntentUri.includes("?") ? upiIntentUri.split("?")[1] : upiQuery;
+  const buildAppUri = (androidPkg: string, iosScheme: string) => {
+    if (platform.isAndroid || platform.isNative) {
+      return `intent://pay?${queryPart}#Intent;scheme=upi;package=${androidPkg};end;`;
+    }
+    if (platform.isIOS) {
+      return `${iosScheme}${queryPart}`;
+    }
+    return upiIntentUri;
+  };
+
+  const upiApps = [
+    {
+      name: "Google Pay",
+      short: "GPay",
+      href: buildAppUri("com.google.android.apps.nbu.paisa.user", "tez://upi/pay?"),
+      color: "text-blue-700",
+      bg: "bg-blue-50 border-blue-200 hover:bg-blue-100",
+    },
+    {
+      name: "PhonePe",
+      short: "PhonePe",
+      href: buildAppUri("com.phonepe.app", "phonepe://pay?"),
+      color: "text-purple-700",
+      bg: "bg-purple-50 border-purple-200 hover:bg-purple-100",
+    },
+    {
+      name: "Paytm",
+      short: "Paytm",
+      href: buildAppUri("net.one97.paytm", "paytmmp://pay?"),
+      color: "text-sky-700",
+      bg: "bg-sky-50 border-sky-200 hover:bg-sky-100",
+    },
+    {
+      name: "BHIM",
+      short: "BHIM",
+      href: buildAppUri("in.org.npci.upiapp", "bhim://upi/pay?"),
+      color: "text-orange-700",
+      bg: "bg-orange-50 border-orange-200 hover:bg-orange-100",
+    },
+  ];
+
+  const handleUpiAppClick = (e: React.MouseEvent<HTMLAnchorElement>, appName: string) => {
+    if (!platform.isMobile) {
+      e.preventDefault();
+      setDesktopAppNotice(
+        `Direct ${appName} app launch works on mobile phones. On desktop, scan the QR code with ${appName} on your phone.`
+      );
+      return;
+    }
+    setDesktopAppNotice(null);
+  };
 
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
     upiIntentUri
@@ -457,13 +548,48 @@ export default function UpiCheckoutButton({
                 </div>
               ) : (
                 <>
-                  <div className="text-center">
-                    <h3 className="text-sm font-extrabold text-slate-900">
-                      Scan &amp; Pay with any UPI App
-                    </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Open GPay, PhonePe, Paytm, or BHIM to scan
-                    </p>
+                  {/* Direct Clickable UPI App Launchers (Primary on Mobile) */}
+                  <div className="space-y-2">
+                    <div className="text-center">
+                      <h3 className="text-sm font-extrabold text-slate-900">
+                        {platform.isMobile ? "Tap to Open UPI App & Pay" : "Scan & Pay with any UPI App"}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {platform.isMobile
+                          ? "Select Google Pay, PhonePe, Paytm, or BHIM to pay instantly"
+                          : "Open GPay, PhonePe, Paytm, or BHIM on your phone to scan"}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {upiApps.map((app) => (
+                        <a
+                          key={app.name}
+                          href={app.href}
+                          onClick={(e) => handleUpiAppClick(e, app.name)}
+                          className={`py-2 px-2.5 rounded-xl text-[11px] font-bold border transition-all text-center flex items-center justify-center gap-1 shadow-xs ${app.bg} ${app.color}`}
+                        >
+                          <span>{app.short}</span>
+                        </a>
+                      ))}
+                    </div>
+
+                    {/* Direct Mobile UPI Intent Button */}
+                    <a
+                      href={upiIntentUri}
+                      onClick={(e) => handleUpiAppClick(e, "your UPI app")}
+                      className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>Open Any UPI App on This Phone</span>
+                    </a>
+
+                    {desktopAppNotice && (
+                      <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-[11px] flex items-start gap-1.5">
+                        <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-600" />
+                        <span>{desktopAppNotice}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Dynamic QR Code */}
@@ -474,60 +600,13 @@ export default function UpiCheckoutButton({
                       alt="UPI Payment QR Code"
                       width={180}
                       height={180}
-                      className="w-44 h-44 rounded-lg object-contain"
+                      className="w-40 h-40 rounded-lg object-contain"
                     />
                     <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                       <span>Verified NPCI Dynamic UPI QR</span>
                     </div>
                   </div>
-
-                  {/* Direct Clickable UPI App Launchers */}
-                  <div className="flex flex-wrap items-center justify-center gap-1.5">
-                    {[
-                      {
-                        name: "GPay",
-                        href: upiIntentUri.replace(/^upi:\/\//i, "tez://upi/"),
-                        color: "text-blue-600",
-                        bg: "bg-blue-50 border-blue-200 hover:bg-blue-100",
-                      },
-                      {
-                        name: "PhonePe",
-                        href: upiIntentUri.replace(/^upi:\/\//i, "phonepe://"),
-                        color: "text-purple-600",
-                        bg: "bg-purple-50 border-purple-200 hover:bg-purple-100",
-                      },
-                      {
-                        name: "Paytm",
-                        href: upiIntentUri.replace(/^upi:\/\//i, "paytmmp://"),
-                        color: "text-sky-600",
-                        bg: "bg-sky-50 border-sky-200 hover:bg-sky-100",
-                      },
-                      {
-                        name: "BHIM",
-                        href: upiIntentUri,
-                        color: "text-orange-600",
-                        bg: "bg-orange-50 border-orange-200 hover:bg-orange-100",
-                      },
-                    ].map((app) => (
-                      <a
-                        key={app.name}
-                        href={app.href}
-                        className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-colors ${app.bg} ${app.color}`}
-                      >
-                        {app.name}
-                      </a>
-                    ))}
-                  </div>
-
-                  {/* Direct Mobile UPI Intent Button */}
-                  <a
-                    href={upiIntentUri}
-                    className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
-                  >
-                    <Smartphone className="w-4 h-4" />
-                    <span>Pay on this device with UPI App</span>
-                  </a>
 
                   {/* Copy VPA Row */}
                   <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs">
