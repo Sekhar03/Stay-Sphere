@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { saveFileBuffer } from "@/lib/media/storage";
 import { getServerSession } from "@/lib/auth/jwt";

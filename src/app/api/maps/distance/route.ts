@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { calculateDistanceSchema } from "@/lib/validators";
 import { calculateRouteDistance } from "@/lib/maps/googleMaps";

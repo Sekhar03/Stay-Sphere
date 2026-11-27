@@ -3,7 +3,9 @@ import bcrypt from "bcryptjs";
 import { Role } from "@/lib/constants";
 import { cookies } from "next/headers";
 
-const JWT_SECRET = (() => {
+// Lazy getter — evaluated per call, not at module load, so Next.js static
+// analysis never throws during `next build` even when JWT_SECRET is absent.
+function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
@@ -12,7 +14,7 @@ const JWT_SECRET = (() => {
     return "staysphere_dev_fallback_secret_key_32chars_min";
   }
   return secret;
-})();
+}
 
 export const TOKEN_COOKIE_NAME = "staysphere_token";
 
@@ -37,12 +39,12 @@ export async function comparePassword(password: string, hash: string): Promise<b
 }
 
 export function signToken(payload: JWTPayload, expiresIn: string | number = "7d"): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: expiresIn as any });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: expiresIn as any });
 }
 
 export function verifyToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, getJwtSecret()) as JWTPayload;
   } catch {
     return null;
   }
