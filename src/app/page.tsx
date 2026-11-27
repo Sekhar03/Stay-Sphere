@@ -702,10 +702,10 @@ export default function HomePage() {
           </div>
         ) : (
           <>
-            {/* Split: scrollable list (left) + sticky map (right) */}
-            <div className={viewMode === "split" ? "flex gap-4" : ""}>
+            {/* Split: scrollable list (left) + sticky map (right / top on mobile) */}
+            <div className={viewMode === "split" ? "flex flex-col-reverse lg:flex-row gap-4" : ""}>
               {/* Grid / List column */}
-              <div className={viewMode === "split" ? "flex-1 overflow-y-auto max-h-[80vh] pr-1" : ""}>
+              <div className={viewMode === "split" ? "flex-1 lg:overflow-y-auto lg:max-h-[80vh] lg:pr-1" : ""}>
                 <div className={viewMode === "split"
                   ? "flex flex-col gap-4"
                   : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
@@ -946,27 +946,31 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Sticky Map panel (split mode only) */}
-              {viewMode === "split" && (
-                <div className="hidden lg:block w-[42%] sticky top-4 self-start h-[80vh] rounded-xl overflow-hidden border border-slate-200 shadow-sm">
-                  {focusedMapProperty && focusedMapProperty.latitude && focusedMapProperty.longitude ? (
-                    <PGMap
-                      latitude={focusedMapProperty.latitude}
-                      longitude={focusedMapProperty.longitude}
-                      name={focusedMapProperty.name}
-                      address={focusedMapProperty.addressLine1 || focusedMapProperty.locality}
-                      city={focusedMapProperty.city}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 gap-3">
-                      <MapIcon className="w-10 h-10 text-slate-300" />
-                      <p className="text-xs text-slate-400 text-center max-w-[160px]">
-                        Click a property card to view it on the map
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Sticky Map panel (split mode only — visible on all viewports) */}
+              {viewMode === "split" && (() => {
+                const activeMapProperty = focusedMapProperty || properties[0] || null;
+                return (
+                  <div className="w-full lg:w-[42%] lg:sticky lg:top-4 self-start rounded-xl overflow-hidden">
+                    {activeMapProperty ? (
+                      <PGMap
+                        latitude={activeMapProperty.latitude}
+                        longitude={activeMapProperty.longitude}
+                        name={activeMapProperty.name}
+                        address={activeMapProperty.addressLine1 || activeMapProperty.locality || activeMapProperty.city}
+                        city={activeMapProperty.city}
+                        heightClass="h-[280px] lg:h-[62vh]"
+                      />
+                    ) : (
+                      <div className="w-full h-[280px] lg:h-[62vh] flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-2xl gap-3">
+                        <MapIcon className="w-10 h-10 text-slate-300" />
+                        <p className="text-xs text-slate-400 text-center max-w-[180px]">
+                          Click a property card to view it on the map
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Load More button */}
